@@ -5,24 +5,11 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
-from langchain_chroma import Chroma
+from database import vectorstore
+from graph import app_graph
 
 # Load environment variables early
 load_dotenv()
-
-# Initialize Embeddings with OpenRouter
-embeddings = OpenAIEmbeddings(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
-    model="openai/text-embedding-3-small" # OpenRouter routing format
-)
-
-vectorstore = Chroma(
-    collection_name="rag-chroma",
-    embedding_function=embeddings,
-    persist_directory="./chroma_db"
-)
 
 app = FastAPI(
     title="Self-Correcting RAG API",
@@ -80,8 +67,24 @@ async def upload_document(file: UploadFile = File(...)):
 
 @app.post("/api/v1/chat", response_model=QueryResponse)
 async def chat(request: QueryRequest):
-    dummy_trace = ["Node 'retrieve' executed", "Node 'generate' executed"]
-    return QueryResponse(
-        answer=f"Echoing back your question: {request.question}",
-        execution_trace=dummy_trace
-    )
+
+    inputs = {"question": request.question}
+    events = []
+    final_answer = ""
+
+    try:
+        # Stream the execution of the graph
+        for output in app_graph.stream(inputs):
+            # LangGraph yields a dictionary with the node name as the key
+            for node_name, state_update in output.items():
+                events.append(f"Node '{node_name}' executed.")
+                
+                if "generation" in state_update:
+                    final_answer = state_update["generation"]
+        
+        return QueryResponse(
+            answer=final_answer,
+            execution_trace=events
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
