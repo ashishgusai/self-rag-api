@@ -1,0 +1,1 @@
+LangGraph is a library for building stateful, multi-actor applications with LLMs. It extends the LangChain Expression Language with the ability to coordinate multiple chains (or actors) across multiple steps of computation in a cyclic manner. Vector databases like ChromaDB store embeddings to allow for fast similarity search.
